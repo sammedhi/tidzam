@@ -198,7 +198,7 @@ class Dataset:
 
         self.data           = []
         self.labels         = []
-        self.batch_size     = 64
+        self.batch_size     = conf_data["batch_size"]
 
         self.mode                  = None
         self.thread_count_training = 3
@@ -471,6 +471,6 @@ class Dataset:
 
             queue.put([data, labels])
 
-    def get_nb_classes(self):
-        return len(self.conf_data["classes"])
     '''
+    def get_nb_classes(self):
+        return len(self.out_labels)

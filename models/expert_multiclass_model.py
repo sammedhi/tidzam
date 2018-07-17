@@ -5,6 +5,7 @@ class DNN:
     def __init__(self,data_size ,n_classes , class_tree):
         self.name = "selector"
         self.show_kernel_map = []
+        self.res = None
 
         with tf.name_scope('Input'):
             self.input = tf.placeholder(tf.float32, shape=[None, data_size[0] * data_size[1] ], name="x-input")
@@ -20,7 +21,7 @@ class DNN:
 
             with tf.variable_scope("CONV_1"):
                 [conv1, W, b] = tl.conv2d(net, 121, 20)
-                R1 = tf.nn.l2_loss(W)
+                self.res = tf.nn.l2_loss(W)
                 self.show_kernel_map.append(W) # Create the feature map
 
             with tf.variable_scope("POOL_1"):
@@ -28,7 +29,7 @@ class DNN:
 
             with tf.variable_scope("CONV_2"):
                 [conv2, W, b] = tl.conv2d(pool1, 16, 10)
-                R2 = tf.nn.l2_loss(W)
+                self.res += tf.nn.l2_loss(W)
                 self.show_kernel_map.append(W) # Create the feature map
 
             with tf.variable_scope("POOL_2"):
@@ -36,12 +37,13 @@ class DNN:
 
             self.out = self.build_expert_fc(class_tree , pool2)
 
+
             with tf.name_scope('Cost'):
                 self.cost  = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits (
                     labels=self.labels,
                     logits=self.out) )
 
-                #self.cost = self.cost + 0.01 * (R1 + R2)
+                self.cost = self.cost + 0.01 * self.res
 
     def build_expert_fc(self , node , input , tf_factor = None):
         if len(node.child_list) == 0:
@@ -53,7 +55,7 @@ class DNN:
             with tf.variable_scope("FC_1"):
                 flat1 = tl.fc_flat(input)
                 h, W, b =  tl.fc(flat1, 1024)
-                R3 = tf.nn.l2_loss(W)
+                self.res += tf.nn.l2_loss(W)
                 fc1   = tf.nn.relu(h)
 
             with tf.variable_scope("DROPOUT_1"):
@@ -61,7 +63,7 @@ class DNN:
 
             with tf.variable_scope("FC_2"):
                 h, W, b =  tl.fc(drop1, 1024)
-                R4 = tf.nn.l2_loss(W)
+                self.res += tf.nn.l2_loss(W)
                 fc2   = tf.nn.relu( h )
 
             with tf.variable_scope("DROPOUT_2"):
@@ -73,7 +75,7 @@ class DNN:
             if tf_factor is not None:
                 with tf.variable_scope("WeightingOp"):
                     tf_factor = tf.reshape(tf.tile(tf_factor, [len(node.child_list)]), [tf.shape(tf_factor)[0], len(node.child_list)])
-                    out = tf.multiply(tf_factor , out)
+                    out = tf.reduce_logsumexp (tf.stack( (- out , - tf_factor , tf.multiply(out , tf_factor) , tf.ones_like(out) ), axis=2)  , axis = 2 )
 
         for i , child in enumerate(node.child_list):
             new_expert = self.build_expert_fc(child , input , out[:,i])

@@ -1,10 +1,10 @@
 {
-	"out": "new2",
+	"out": "exclusive_model",
 	"training_iters": 200000,
-	"batch_size": 128,
-	"dnn": "model/model.py",
+	"batch_size": 64,
+	"dnn": "models/expert_multiclass_model.py",
 	"learning_rate": 0.001,
-
+	"expert_mode" : true,
 	"object": [{
 		"name": "birds",
 		"path": "tidzam.media.mit.edu/samples/birds",
@@ -16,8 +16,8 @@
 		"type": "content",
 		"is_augmented":true
 	}, {
-		"name": "rain",
-		"path": "tidzam.media.mit.edu/samples/rain",
+		"name": "weather_rain",
+		"path": "tidzam.media.mit.edu/samples/weather_rain",
 		"type": "background"
 	}],
 

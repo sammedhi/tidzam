@@ -5,7 +5,8 @@ class DNN:
     def __init__(self,data_size ,n_classes , class_tree):
         self.name = "selector"
         self.show_kernel_map = []
-        self.res = None
+        self.res = 0.0
+        self.model_number = 0.0
 
         with tf.name_scope('Input'):
             self.input = tf.placeholder(tf.float32, shape=[None, data_size[0] * data_size[1] ], name="x-input")
@@ -21,7 +22,7 @@ class DNN:
 
             with tf.variable_scope("CONV_1"):
                 [conv1, W, b] = tl.conv2d(net, 121, 20)
-                self.res = tf.nn.l2_loss(W)
+                R1 = tf.nn.l2_loss(W)
                 self.show_kernel_map.append(W) # Create the feature map
 
             with tf.variable_scope("POOL_1"):
@@ -29,7 +30,7 @@ class DNN:
 
             with tf.variable_scope("CONV_2"):
                 [conv2, W, b] = tl.conv2d(pool1, 16, 10)
-                self.res += tf.nn.l2_loss(W)
+                R2 = tf.nn.l2_loss(W)
                 self.show_kernel_map.append(W) # Create the feature map
 
             with tf.variable_scope("POOL_2"):
@@ -43,11 +44,13 @@ class DNN:
                     labels=self.labels,
                     logits=self.out) )
 
-                self.cost = self.cost + 0.01 * self.res
+                self.cost = self.cost + 0.01 * (R1 + R2 + self.res / self.model_number)
 
     def build_expert_fc(self , node , input , tf_factor = None):
         if len(node.child_list) == 0:
             return None
+
+        self.model_number += 1.0
 
         print("node_name : " , node.name)
 
@@ -74,8 +77,11 @@ class DNN:
 
             if tf_factor is not None:
                 with tf.variable_scope("WeightingOp"):
-                    tf_factor = tf.reshape(tf.tile(tf_factor, [len(node.child_list)]), [tf.shape(tf_factor)[0], len(node.child_list)])
-                    out = tf.reduce_logsumexp (tf.stack( (- out , - tf_factor , tf.multiply(out , tf_factor) , tf.ones_like(out) ), axis=2)  , axis = 2 )
+                    factors_list = []
+                    for t in range(len(node.child_list)):
+                        factors_list.append(tf_factor)
+                    tf_factor = tf.stack( factors_list , axis = 1 )
+                    out = - tf.reduce_logsumexp (tf.stack( (- out , - tf_factor , - tf.add(out , tf_factor) , tf.zeros_like(out) ), axis = 2)  , axis = 2 )
 
         for i , child in enumerate(node.child_list):
             new_expert = self.build_expert_fc(child , input , out[:,i])

@@ -267,6 +267,12 @@ class Dataset:
     def build_labels_tree(self):
         self.class_tree = LabelTree()
         self.build_labels_dic()
+
+        if not self.expert_mode:
+            for cl in self.conf_data["classes"]:
+                self.class_tree.add_child(cl)
+            return
+
         for cl in self.conf_data["classes"]:
             current_node = self.class_tree
             cl_s = cl.split("_")

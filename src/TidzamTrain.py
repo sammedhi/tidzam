@@ -232,10 +232,17 @@ if __name__ == "__main__":
             hooks=[tf.train.StopAtStepHook(last_step=conf_data["training_iters"])]
 
         ###################################
+        # FORMAT the way Numpy array are printed
+        ###################################
+        float_formatter = lambda x: "%.2f" % x
+        np.set_printoptions(formatter={'float_kind':float_formatter})
+
+        ###################################
         # Start the session
         ###################################
         if conf_data["task_index"] != 0:
             App.log(0, "Waiting for the master worker.")
+
 
         with tf.train.MonitoredTrainingSession(master=server.target,
                                                is_chief=(conf_data["task_index"] == 0),
@@ -265,8 +272,8 @@ if __name__ == "__main__":
                         run_options         = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                         run_metadata        = tf.RunMetadata()
 
-                        _, class_accuracy_train , accuracy_train, cost_train, summary_train = sess.run(
-                            [train_op, summaries.true_positive_accuracy_by_class, summaries.accuracy, net.cost, merged],
+                        _, outputs_examples_train,class_accuracy_train , accuracy_train, cost_train, summary_train = sess.run(
+                            [train_op,summaries.outputs_examples, summaries.true_positive_accuracy_by_class, summaries.accuracy, net.cost, merged],
                             feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.25},
                             options=run_options, run_metadata=run_metadata)
 
@@ -290,8 +297,8 @@ if __name__ == "__main__":
                         else:
                             batch_test_x, batch_test_y  = dataset.next_batch(batch_size=conf_data["batch_size"], testing=True)
 
-                        class_accuracy_test, accuracy_test, cost_test, summary_test = sess.run(
-                            [summaries.true_positive_accuracy_by_class,summaries.accuracy, net.cost, merged ],
+                        outputs_examples_test , class_accuracy_test, accuracy_test, cost_test, summary_test = sess.run(
+                            [summaries.outputs_examples ,summaries.true_positive_accuracy_by_class,summaries.accuracy, net.cost, merged ],
                             feed_dict={net.input: batch_test_x,net.labels: batch_test_y, net.keep_prob: 1.0})
 
                         if step % conf_data["STATS_STEP"] == 0:
@@ -306,6 +313,12 @@ if __name__ == "__main__":
                         accuracy_test = cost_test = 0
                         class_accuracy_test = None
 
+                    if class_accuracy_train is not None and class_accuracy_test is not None:
+                        App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(class_accuracy_train, max_line_width=1000000) ,
+                                                                                                                                                     np.array_str(class_accuracy_test, max_line_width=1000000)) )
+                        App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
+                                                                                                                                                                    np.array_str(outputs_examples_test, max_line_width=1000000)))
+                                                                                                                                                                                                                                                                                                                
                     App.log(0,  "\033[1;37m Step {0} - \033[0m {1:.2f} sec  | train -\033[32m acc {2:.3f}\033[0m cost {3:.3f} | test -\033[32m acc {4:.3f}\033[0m cost {5:.3f} |".format(
                                     step,
                                     time.time() - start_time,
@@ -314,6 +327,3 @@ if __name__ == "__main__":
                                     accuracy_test,
                                     cost_test,
                                      ))
-
-                    if class_accuracy_train is not None and class_accuracy_test is not None:
-                        App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(class_accuracy_train , class_accuracy_test) )

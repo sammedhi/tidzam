@@ -46,6 +46,8 @@ class DNN:
 
                 self.cost = self.cost + 0.01 * (R1 + R2 + self.res / self.model_number)
 
+            self.output = tf.nn.sigmoid(self.out)
+
     def build_expert_fc(self , node , input , tf_factor = None):
         if len(node.child_list) == 0:
             return None

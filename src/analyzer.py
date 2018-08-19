@@ -42,7 +42,7 @@ class Classifier:
             sys.exit()
 
         self.cutoff     = [conf_data["cutoff_down"],conf_data["cutoff_up"] ]
-        self.label_dic  = conf_data["classes"]
+        self.label_dic  = conf_data["classes_list"]
 
         # Get Neural Net name
         path = self.nn_folder.split('/')
@@ -56,7 +56,7 @@ class Classifier:
 
         g = tf.Graph()
         with g.as_default() as g:
-            self.model = eval( 'model.DNN(conf_data["size"], len(self.label_dic))' )
+            self.model = eval( 'model.DNN(conf_data)' )
             self.name = self.model.name
 
             self.sess = tf.InteractiveSession(config=config, graph=g)

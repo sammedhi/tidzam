@@ -2,7 +2,10 @@ import tensorflow as tf
 import src.lib as tl
 
 class DNN:
-    def __init__(self,data_size, n_classes, class_tree):
+    def __init__(self,conf_data):
+        n_classes = len(conf_data["classes_list"])
+        data_size = conf_data["size"]
+
         self.name = "selector"
         self.show_kernel_map = []
 

@@ -151,38 +151,6 @@ def sorted_nicely( l ):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
     return sorted(l, key = alphanum_key)
 
-class LabelNode:
-    def __init__(self , name):
-        self.child_list = []
-        self.name = name
-
-    def find_child(self , name):
-        for child in self.child_list:
-            if child.name == name:
-                return child
-        return None
-
-    def add_child(self , name):
-        self.child_list.append(LabelNode(name))
-        return self.child_list[-1]
-
-    def get_child_number(self):
-        child_number = len(self.child_list)
-        for child in self.child_list:
-            child_number += child.get_child_number()
-        return child_number
-
-    def show(self):
-        print(self.name)
-        print("go_down")
-        for child in self.child_list:
-            child.show()
-        print("can't go down")
-
-class LabelTree(LabelNode):
-    def __init__(self):
-        LabelNode.__init__(self , '')
-
 class Dataset:
     def __init__(self, name="/tmp/dataset",conf_data = None, p=0.9, max_file_size=1000, split=0.9, cutoff=[20,170]):
         self.cur_batch = 0
@@ -210,8 +178,6 @@ class Dataset:
 
         self.conf_data = conf_data
         self.class_tree = None
-        self.expert_mode = conf_data["expert_mode"]
-        self.expert_labels_dic = []
 
         self.cutoff = cutoff
         if(self.conf_data["cutoff_up"] is not None and self.conf_data["cutoff_down"] is not None ):
@@ -231,74 +197,58 @@ class Dataset:
             t. terminate()
 
     def build_labels_dic(self):
-        are_labels_wrong = False
-        try:
-            if "object" not in self.conf_data:
-                self.conf_data["classes"] = []
-                for cl in glob.glob(self.name + "/*"):
-                    if os.path.isdir(cl):
-                        cl = cl.split("/")
-                        cl = cl[len(cl)-1].split("(")[0]
-                        if cl not in self.conf_data["classes"] and cl != "unchecked":
-                            self.conf_data["classes"].append(cl)
+        self.conf_data["classes"] = self.sort_classes(self.conf_data["classes"])
+        self.conf_data["classes_list"] = self.class_flattening(self.conf_data["classes"])
 
-            labels_dic = (np.load(self.conf_data["out"] + "/labels_dic.npy")).tolist()
+    ##########################################
+    # Flatten the "classes" inside the conf_data json file to get a list of class instead
+    # of a comlex object .
+    # Here a simple example :
+    # [ {"name" : "class1" , "classes" : ["subc1" , "subc2"]} , "class2"]
+    #                   =========>
+    # [ "class1" , "subc1" , "subc2" , "class2" ]
+    ###########################################
+    def class_flattening(self , cl_list):
+        output = []
+        for obj in cl_list:
+            if isinstance(obj , str):
+                output.append(obj)
+            else:
+                output.append(obj["name"])
+                sub_output = self.class_flattening(obj["classes"])
+                for cl in sub_output:
+                    output.append(cl)
+        return output
 
-            if len(labels_dic) > len(self.conf_data["classes"]):
-                are_labels_wrong = True
-            for label in labels_dic:
-                if label not in self.conf_data["classes"]:
-                    are_labels_wrong = True
-
-            if not are_labels_wrong:
-                self.conf_data["classes"] = labels_dic
-        except:
-            App.log(0 , "Couldn't find a label dic , a new one will be build")
-
-        if are_labels_wrong:
-            App.log(0 , "CARE : The model was build for different labels")
-            App.log(0 , "previous model classes : " + str(labels_dic))
-            App.log(0 , "current model classes : " + str(self.conf_data["classes"]))
-            exit(0)
-
-        self.conf_data["classes"].sort()
-
-
-    def build_labels_tree(self):
-        self.class_tree = LabelTree()
-        self.build_labels_dic()
-
-        if not self.expert_mode:
-            for cl in self.conf_data["classes"]:
-                self.class_tree.add_child(cl)
-            return
-
-        for cl in self.conf_data["classes"]:
-            current_node = self.class_tree
-            cl_s = cl.split("_")
-            for sub_cl in cl_s:
-                node = current_node.find_child(sub_cl)
-                if node is not None:
-                    current_node = node
-                else:
-                    current_node = current_node.add_child(sub_cl)
-
-    def build_expert_labels_dic_rec(self , node):
-        for child in node.child_list:
-            self.expert_labels_dic.append(child.name)
-        for child in node.child_list:
-            self.build_expert_labels_dic_rec(child)
+    ##########################################
+    # Sort the "classes" inside the conf_data json file .
+    # Here a simple example :
+    # [ {"name" : "b" , "classes" : ["s" , "d" , "l"]} , "a"]
+    #                   =========>
+    # [ "a" , {"name" : "b" , "classes" : ["d" , "l" , "s"]}]
+    ###########################################
+    def sort_classes(self , list_cl):
+        sorted_list = []
+        for cl in list_cl:
+            if not isinstance(cl , str):
+                cl["classes"] = self.sort_classes(cl["classes"])
+            inserted = False
+            for index , sorted_cl in enumerate(sorted_list):
+                name_cl = cl if isinstance(cl , str) else cl["name"]
+                name_sorted_cl = sorted_cl if isinstance(sorted_cl , str) else sorted_cl["name"]
+                if name_cl < name_sorted_cl:
+                    sorted_list.insert(index , cl)
+                    inserted = True
+                    break
+            if not inserted:
+                sorted_list.append(cl)
+        return sorted_list
 
 
-    def build_output_vector(self , class_index):
+    def build_output_vector(self , class_name , inheritence_dic):
         label = np.zeros((1,len(self.out_labels)))
-        if not self.expert_mode:
-            label[0,class_index] = 1
-        else:
-            labels_classes = self.conf_data["classes"][class_index].split('_')
-            for sub_label in labels_classes:
-                label[0 , self.out_labels.index(sub_label)] = 1
-
+        for cl_index in inheritence_dic[class_name]:
+            label[0 , cl_index] = 1
         return label
 
 
@@ -308,16 +258,10 @@ class Dataset:
         self.queue_training  = ctx.Queue(self.queue_maxsize)
         self.queue_testing   = ctx.Queue(self.queue_maxsize)
 
-        # Build classe dictionnary
-        self.build_labels_tree()
-        if self.expert_mode:
-            self.build_expert_labels_dic_rec(self.class_tree)
-            self.out_labels = self.expert_labels_dic
-            print(self.out_labels)
-        else:
-            self.out_labels = self.conf_data["classes"]
+        # Build class dictionnary
+        self.build_labels_dic()
+        self.out_labels = self.conf_data["classes_list"]
 
-        App.log(0 ,"trained expert classes are : " + str(self.expert_labels_dic))
         App.log(0 ,"trained classes are : " + str(self.conf_data["classes"]))
 
         # Extract file for training and testing
@@ -333,8 +277,8 @@ class Dataset:
             cl_names = [object["name"] for object in self.conf_data["object"]]
             cl_type = [object["type"] for object in self.conf_data["object"]]
         else:
-            cl_paths_list = [np.array(glob.glob(self.name + "/" + cl + "*/**/*.wav", recursive=True)) for cl in self.conf_data["classes"]]
-            cl_names = self.conf_data["classes"]
+            cl_paths_list = [np.array(glob.glob(self.name + "/" + cl + "*/**/*.wav", recursive=True)) for cl in self.conf_data["classes_list"]]
+            cl_names = self.conf_data["classes_list"]
 
         raw, time, freq, self.size   = play_spectrogram_from_stream(cl_paths_list[0][0], cutoff=self.cutoff)
 
@@ -347,13 +291,10 @@ class Dataset:
             self.files_testing[cl]  = files_cl[ idx[int(len(idx)*self.split):] ]
             App.log(0, "training / testing datasets for " + cl + ": " + str(len(self.files_training[cl])) + " / " +str(len(self.files_testing[cl]))+" samples" )
 
-        dictionnary = None if "object" not in self.conf_data else self.conf_data["object"]
-
         # Start the workers
         for i in range(self.thread_count_training):
             t = ctx.Process(target=self.build_batch_onfly,
-                    args=(self.queue_training, self.files_training, self.batch_size ,
-                          dictionnary))
+                    args=(self.queue_training, self.files_training, self.batch_size , True))
             t.start()
             self.threads.append(t)
 
@@ -381,28 +322,50 @@ class Dataset:
                 pass
             return self.queue_testing.get()
 
-    def build_batch_onfly(self, queue, files, batch_size=64 , dictionnary = None):
-        if dictionnary is not None:
-            #List all the ambiant class
-            ambiant_cl = [object["name"] for object in dictionnary if object["type"] == "background"]
-            type_dictionnary = dict()
-            augmentation_dictionnary = dict()
-            for cl in  dictionnary:
-                type_dictionnary[cl["name"]] = cl["type"]
-                if "is_augmented" in cl and cl["is_augmented"]:
-                    augmentation_dictionnary[cl["name"]] = cl["is_augmented"]
+    def build_inheritence_dic(self , classes , dic = dict() , parent_indexes = []):
+        for cl in classes:
+            if isinstance(cl , str):
+                cl_index = [index for index , cl_ in enumerate(self.conf_data["classes_list"]) if cl_ == cl]
+                dic[cl] = parent_indexes + cl_index
+            else:
+                cl_index = [index for index , cl_ in enumerate(self.conf_data["classes_list"]) if cl_ == cl["name"]]
+                dic[cl["name"]] = parent_indexes + cl_index
+
+                self.build_inheritence_dic(cl["classes"] ,
+                                           dic ,
+                                           parent_indexes + cl_index)
+        return dic
+
+
+    def build_batch_onfly(self, queue, files, batch_size=64 , training_mode = False):
+        #List all the ambiant class
+        ambiant_cl = [object["name"] for object in self.conf_data["object"] if object["type"] == "background"]
+        type_dictionnary = dict()
+        augmentation_dictionnary = dict()
+        inheritence_dic = self.build_inheritence_dic(self.conf_data["classes"])
+
+        for cl in  self.conf_data["object"]:
+            type_dictionnary[cl["name"]] = cl["type"]
+            if "is_augmented" in cl and cl["is_augmented"]:
+                augmentation_dictionnary[cl["name"]] = cl["is_augmented"]
 
         while True:
             while self.queue_training.full():
                 pass
 
-            count = math.ceil(batch_size / len(self.conf_data["classes"]))
+            count = math.ceil(batch_size / len(self.conf_data["classes_list"]))
             data = []
             labels = []
 
-            for i , cl in enumerate(self.conf_data["classes"]):
+            for i , cl in enumerate(self.conf_data["classes_list"]):
                 #pick random sample (only get the indexes)
-                files_cl = files[cl]
+                try:
+                    files_cl = files[cl]
+                except:
+                    # TODO
+                    # Comment
+                    continue
+
                 idx = np.arange(len(files_cl))
                 np.random.shuffle(idx)
                 idx = idx[:count]
@@ -412,7 +375,7 @@ class Dataset:
                     sound_data , samplerate = sf.read(files_cl[id])
                     sound_data = sound_data if len(sound_data.shape) <= 1 else convert_to_monochannel(sound_data)
 
-                    if dictionnary is not None and type_dictionnary[cl] == "content" and cl in augmentation_dictionnary:
+                    if training_mode and type_dictionnary[cl] == "content" and cl in augmentation_dictionnary:
                         ambiant_file = random.choice(files[random.choice(ambiant_cl)])
                         ambiant_sound , samplerate = sf.read(ambiant_file)
                         ambiant_sound = ambiant_sound if len(ambiant_sound.shape) <= 1 else convert_to_monochannel(ambiant_sound)
@@ -426,7 +389,7 @@ class Dataset:
                         raw, time, freq, size   = play_spectrogram_from_stream(files_cl[id],cutoff=self.cutoff)
                         raw                     = np.nan_to_num(raw)
                         raw                     = np.reshape(raw, [1, raw.shape[0]*raw.shape[1]])
-                        label                   = self.build_output_vector(i)
+                        label                   = self.build_output_vector(cl ,inheritence_dic)
 
                         try:
                             data = np.concatenate((data, raw), axis=0)
@@ -449,34 +412,3 @@ class Dataset:
             labels = labels[:batch_size,:]
 
             queue.put([data, labels])
-
-        '''
-        while True:
-            while self.queue_training.full():
-                pass
-
-                        try:
-                            data = np.concatenate((data, raw), axis=0)
-                            labels = np.concatenate((labels, label), axis=0)
-                        except:
-                            data   = raw
-                            labels = label
-
-                    except Exception as e :
-                        App.log(0, "Bad file" + str(e))
-                        traceback.print_exc()
-
-            #Shuffle the final batch
-            idx = np.arange(data.shape[0])
-            np.random.shuffle(idx)
-            data   = data[idx,:]
-            labels = labels[idx,:]
-
-            data   = data[:batch_size,:]
-            labels = labels[:batch_size,:]
-
-            queue.put([data, labels])
-
-    '''
-    def get_nb_classes(self):
-        return len(self.out_labels)

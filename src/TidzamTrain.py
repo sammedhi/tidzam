@@ -83,10 +83,6 @@ if __name__ == "__main__":
         action="store", type="int", dest="batch_size",
         help='Size of the training batch (Default:64).')
 
-    parser.add_option("--expert-mode",
-        action="store_true", dest="expert_mode" ,
-        help='Are you training an expert like model ?')
-
     parser.add_option("--learning-rate",
         action="store", type="float", dest="learning_rate",
         help='Learning rate (default: 0.001).')
@@ -129,7 +125,7 @@ if __name__ == "__main__":
 
     default_values_dic = {"dataset_train" : "" ,"out" : "/tmp/tflearn_logs" , "dnn" : "default" , "training_iters" : 20000,"testing_iterations" : 10,
                             "batch_size" : 64, "learning_rate" : 0.001, "STATS_STEP" : 20, "nb_embeddings" : 50, "task_index" : 0, "workers" : "localhost:2222","ps": "",
-                            "job_type" : "worker", "cutoff_down":20, "cutoff_up":170 , "expert_mode":False}
+                            "job_type" : "worker", "cutoff_down":20, "cutoff_up":170 }
 
     (opts, args) = parser.parse_args()
     opts = vars(opts)
@@ -138,8 +134,8 @@ if __name__ == "__main__":
         with open(opts["conf_file"]) as json_file:
             conf_data = json.load(json_file)
     except:
-        conf_data = dict()
         App.log(0 , "There isn't any valide json file")
+        exit()
 
     overwrite_conf_with_opts(conf_data , opts , default_values_dic)
 
@@ -206,11 +202,12 @@ if __name__ == "__main__":
         App.log(0, "Loading DNN model from:  " + conf_data["dnn"])
         sys.path.append('./')
         exec("import "+os.path.dirname(conf_data["dnn"])+"."+os.path.basename(conf_data["dnn"]).replace(".py","")+" as model")
-        net = eval("model.DNN([dataset.size[0], dataset.size[1]], dataset.get_nb_classes(), dataset.class_tree)")
+
+        net = eval("model.DNN(conf_data)")
 
         ## Generate summaries
         with tf.name_scope('Summaries'):
-            summaries = vizu.Summaries(net, dataset.get_nb_classes())
+            summaries = vizu.Summaries(net, len(conf_data["classes_list"]))
 
             ## Construct filter images
             with tf.name_scope('Visualize_filters'):
@@ -281,7 +278,7 @@ if __name__ == "__main__":
                                     batch_x[:conf_data["nb_embeddings"],:],
                                     batch_y[:conf_data["nb_embeddings"],:],
                                     session=sess,
-                                    dic=dataset.conf_data["classes"])
+                                    dic=dataset.conf_data["classes_list"])
 
                         summaries.evaluate(batch_x, batch_y, sess)
                         writer_train.add_run_metadata(run_metadata, 'step%d' % step)
@@ -306,7 +303,7 @@ if __name__ == "__main__":
                                         batch_test_x[:conf_data["nb_embeddings"],:],
                                         batch_test_y[:conf_data["nb_embeddings"],:],
                                         session=sess,
-                                        dic=dataset.conf_data["classes"])
+                                        dic=dataset.conf_data["classes_list"])
                         summaries.evaluate(batch_test_x, batch_test_y, sess)
                         writer_test.add_summary(summary_test, step)
                     else:
@@ -318,7 +315,7 @@ if __name__ == "__main__":
                                                                                                                                                      np.array_str(class_accuracy_test, max_line_width=1000000)) )
                         App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
                                                                                                                                                                     np.array_str(outputs_examples_test, max_line_width=1000000)))
-                                                                                                                                                                                                                                                                                                                
+
                     App.log(0,  "\033[1;37m Step {0} - \033[0m {1:.2f} sec  | train -\033[32m acc {2:.3f}\033[0m cost {3:.3f} | test -\033[32m acc {4:.3f}\033[0m cost {5:.3f} |".format(
                                     step,
                                     time.time() - start_time,

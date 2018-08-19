@@ -57,17 +57,31 @@ class Summaries:
         App.log(0, "Build summaries")
         #correct_prediction = tf.equal(tf.argmax(self.net.labels, 1), tf.argmax(self.net.out, 1))
         #self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-        correct_prediction = tf.equal(tf.round(self.net.output), tf.round(self.net.labels))
-        true_positive = tf.multiply(tf.cast(correct_prediction , tf.float32)  , self.net.labels)#tf.where(tf.cast(tf.multiply(tf.cast(correct_prediction , tf.float32)  , self.net.labels) , tf.bool), tf.ones_like(self.net.output) , tf.zeros_like(self.net.output))
-        self.true_positive_accuracy_by_class = tf.divide(tf.reduce_sum(tf.cast(true_positive , tf.float32) , 0) , tf.reduce_sum(self.net.labels , 0))
+        #correct_prediction = tf.equal(tf.round(self.net.output), tf.round(self.net.labels))
+        #true_positive = tf.multiply(tf.cast(correct_prediction , tf.float32)  , self.net.labels)#tf.where(tf.cast(tf.multiply(tf.cast(correct_prediction , tf.float32)  , self.net.labels) , tf.bool), tf.ones_like(self.net.output) , tf.zeros_like(self.net.output))
+        true_positive =  tf.reduce_sum(tf.multiply(tf.round(self.net.output)  , self.net.labels) , 0)
+        false_positive =  tf.reduce_sum(tf.multiply(tf.round(self.net.output)  , 1.0 - self.net.labels) , 0)
+        false_negative =  tf.reduce_sum(tf.multiply(1.0 - tf.round(self.net.output)  , self.net.labels) , 0)
 
-        self.outputs_examples = tf.random_shuffle(self.net.output)[:5,:]
+        global_true_positive = tf.reduce_sum(true_positive)
+        global_false_positive =  tf.reduce_sum(false_positive)
+        global_false_negative =  tf.reduce_sum(false_negative)
+        #self.true_positive_accuracy_by_class = tf.divide(tf.reduce_sum(tf.cast(true_positive , tf.float32) , 0) , tf.reduce_sum(self.net.labels , 0))
+        #self.outputs_examples = tf.random_shuffle(self.net.output)[:5,:]
 
         #all_labels_true = tf.reduce_min(tf.cast(correct_prediction, tf.float32), 1)
         #self.accuracy = tf.reduce_mean(all_labels_true)
-        correct_prediction = tf.equal(tf.argmax(self.net.labels, 1), tf.argmax(self.net.out, 1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        #correct_prediction = tf.equal(tf.argmax(self.net.labels, 1), tf.argmax(self.net.out, 1))
+        #self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
+        self.precision = true_positive / (true_positive + false_positive)
+        self.recall = true_positive / (true_positive + false_negative)
+
+        global_precision = global_true_positive / (global_true_positive + global_false_positive)
+        global_recall = global_true_positive / (global_true_positive + global_false_negative)
+
+        self.f1_score = 2.0 * (self.precision * self.recall) / (self.precision + self.recall)
+        self.accuracy = 2.0 * (global_precision * global_recall) / (global_precision + global_recall)
 
         tf.summary.scalar('accuracy', self.accuracy)
         tf.summary.scalar('Cost', self.net.cost)

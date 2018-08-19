@@ -269,8 +269,8 @@ if __name__ == "__main__":
                         run_options         = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                         run_metadata        = tf.RunMetadata()
 
-                        _, outputs_examples_train,class_accuracy_train , accuracy_train, cost_train, summary_train = sess.run(
-                            [train_op,summaries.outputs_examples, summaries.true_positive_accuracy_by_class, summaries.accuracy, net.cost, merged],
+                        _ , accuracy_train , precision_train , recall_train , f1_score_train , cost_train, summary_train = sess.run(
+                            [train_op, summaries.accuracy, summaries.precision , summaries.recall , summaries.f1_score, net.cost, merged],
                             feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.25},
                             options=run_options, run_metadata=run_metadata)
 
@@ -285,7 +285,7 @@ if __name__ == "__main__":
                         writer_train.add_summary(summary_train, step)
                     else:
                         accuracy_train = cost_train = 0
-                        class_accuracy_train = None
+                        precision_train = None
 
                     ################### TESTING
                     if step % conf_data["testing_iterations"] == 0:
@@ -294,8 +294,8 @@ if __name__ == "__main__":
                         else:
                             batch_test_x, batch_test_y  = dataset.next_batch(batch_size=conf_data["batch_size"], testing=True)
 
-                        outputs_examples_test , class_accuracy_test, accuracy_test, cost_test, summary_test = sess.run(
-                            [summaries.outputs_examples ,summaries.true_positive_accuracy_by_class,summaries.accuracy, net.cost, merged ],
+                        accuracy_test , precision_test , recall_test , f1_score_test, cost_test, summary_test = sess.run(
+                            [summaries.accuracy ,summaries.precision , summaries.recall , summaries.f1_score, net.cost, merged ],
                             feed_dict={net.input: batch_test_x,net.labels: batch_test_y, net.keep_prob: 1.0})
 
                         if step % conf_data["STATS_STEP"] == 0:
@@ -308,14 +308,20 @@ if __name__ == "__main__":
                         writer_test.add_summary(summary_test, step)
                     else:
                         accuracy_test = cost_test = 0
-                        class_accuracy_test = None
+                        precision_test = None
 
-                    if class_accuracy_train is not None and class_accuracy_test is not None:
-                        App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(class_accuracy_train, max_line_width=1000000) ,
-                                                                                                                                                     np.array_str(class_accuracy_test, max_line_width=1000000)) )
-                        App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
-                                                                                                                                                                    np.array_str(outputs_examples_test, max_line_width=1000000)))
+                    if precision_test is not None and precision_train is not None:
+                        App.log(0 , "\x1B[31mprecision\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(precision_train, max_line_width=1000000) ,
+                                                                                                                                                     np.array_str(precision_test, max_line_width=1000000)) )
+                        App.log(0 , "\x1B[31mrecall\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(recall_train, max_line_width=1000000) ,
+                                                                                                                                                     np.array_str(recall_test, max_line_width=1000000)) )
+                        App.log(0 , "\x1B[31mf1_score\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(f1_score_train, max_line_width=1000000) ,
+                                                                                                                                                     np.array_str(f1_score_test, max_line_width=1000000)) )
 
+                        #App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(class_accuracy_train, max_line_width=1000000) ,
+                        #                                                                                                                             np.array_str(class_accuracy_test, max_line_width=1000000)) )
+                        #App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
+                        #                                                                                                                                            np.array_str(outputs_examples_test, max_line_width=1000000)))
                     App.log(0,  "\033[1;37m Step {0} - \033[0m {1:.2f} sec  | train -\033[32m acc {2:.3f}\033[0m cost {3:.3f} | test -\033[32m acc {4:.3f}\033[0m cost {5:.3f} |".format(
                                     step,
                                     time.time() - start_time,

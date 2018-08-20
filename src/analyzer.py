@@ -42,7 +42,11 @@ class Classifier:
             sys.exit()
 
         self.cutoff     = [conf_data["cutoff_down"],conf_data["cutoff_up"] ]
-        self.label_dic  = conf_data["classes_list"]
+        if "classes_list" in conf_data:
+            self.label_dic  = conf_data["classes_list"]
+        else:
+            #Useful for some old models
+            self.label_dic  = conf_data["classes"]
 
         # Get Neural Net name
         path = self.nn_folder.split('/')

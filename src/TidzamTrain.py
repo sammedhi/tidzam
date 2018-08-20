@@ -11,6 +11,7 @@ import vizualisation as vizu
 import TidzamDatabase as database
 from App import App
 import json
+from display_board import DisplayBoard
 
 '''
 def build_command_from_conf(conf_file):
@@ -229,10 +230,17 @@ if __name__ == "__main__":
             hooks=[tf.train.StopAtStepHook(last_step=conf_data["training_iters"])]
 
         ###################################
-        # FORMAT the way Numpy array are printed
+        # Initialize Printing_board
         ###################################
-        float_formatter = lambda x: "%.2f" % x
-        np.set_printoptions(formatter={'float_kind':float_formatter})
+        display_board = DisplayBoard(conf_data["classes_list"] , 20, 60)
+
+        display_board.add_new_row("Precision_Train")
+        display_board.add_new_row("Recall_Train")
+        display_board.add_new_row("F1_score_Train")
+
+        display_board.add_new_row("Precision_Test")
+        display_board.add_new_row("Recall_Test")
+        display_board.add_new_row("F1_score_Test")
 
         ###################################
         # Start the session
@@ -256,7 +264,7 @@ if __name__ == "__main__":
                     json.dump(conf_data, outfile)
 
                 while not sess.should_stop():
-                    App.log(0, "---")
+                    #App.log(0, "---")
                     start_time = time.time()
 
                     ################### TRAINING
@@ -311,6 +319,21 @@ if __name__ == "__main__":
                         precision_test = None
 
                     if precision_test is not None and precision_train is not None:
+                        display_board.update_row_values("Precision_Train" , precision_train)
+                        display_board.update_row_values("Precision_Test" , precision_test)
+                        display_board.update_row_values("Recall_Train" , recall_train)
+                        display_board.update_row_values("Recall_Test" , recall_test)
+                        display_board.update_row_values("F1_score_Train" , f1_score_train)
+                        display_board.update_row_values("F1_score_Test" , f1_score_test)
+                        display_board.display()
+
+                        App.log(0,  "\033[1;37m Step {0} - \033[0m {1:.2f} sec  | train - cost \033[32m{2:.3f}\033[0m | test - cost \033[32m{3:.3f}\033[0m |".format(
+                                        step,
+                                        time.time() - start_time,
+                                        cost_train,
+                                        cost_test,
+                                         ))
+                        '''
                         App.log(0 , "\x1B[31mprecision\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(precision_train, max_line_width=1000000) ,
                                                                                                                                                      np.array_str(precision_test, max_line_width=1000000)) )
                         App.log(0 , "\x1B[31mrecall\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(recall_train, max_line_width=1000000) ,
@@ -318,15 +341,10 @@ if __name__ == "__main__":
                         App.log(0 , "\x1B[31mf1_score\x1B[0m : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(f1_score_train, max_line_width=1000000) ,
                                                                                                                                                      np.array_str(f1_score_test, max_line_width=1000000)) )
 
+                        App.log(0 , f1_score_train.shape)
+                        exit()
+                        '''
                         #App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(class_accuracy_train, max_line_width=1000000) ,
                         #                                                                                                                             np.array_str(class_accuracy_test, max_line_width=1000000)) )
                         #App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
-                        #                                                                                                                                            np.array_str(outputs_examples_test, max_line_width=1000000)))
-                    App.log(0,  "\033[1;37m Step {0} - \033[0m {1:.2f} sec  | train -\033[32m acc {2:.3f}\033[0m cost {3:.3f} | test -\033[32m acc {4:.3f}\033[0m cost {5:.3f} |".format(
-                                    step,
-                                    time.time() - start_time,
-                                    accuracy_train,
-                                    cost_train,
-                                    accuracy_test,
-                                    cost_test,
-                                     ))
+                        #                                                                                                                                       np.array_str(outputs_examples_test, max_line_width=1000000)))

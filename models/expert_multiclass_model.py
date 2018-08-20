@@ -96,8 +96,9 @@ class DNN:
                 out = tf.concat( (out[ : , : sub_output["parent_index"] + 1 + offset] ,
                                   new_sub_output ,
                                   out[ : ,  sub_output["parent_index"] + 1 + offset: ]) , 1)
-
-                offset += sub_output["outputs"].shape[1]
+                print(sub_output["outputs"].shape[1])
+                print(offset)
+                offset += int(sub_output["outputs"].shape[1])
 
         return out
 

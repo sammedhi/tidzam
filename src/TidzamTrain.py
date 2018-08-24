@@ -45,6 +45,17 @@ def overwrite_conf_with_opts(conf_data , opts , default_values_dic):
         if value is not None or key not in conf_data:
             conf_data[key] = value
 
+
+def push_new_memory(outputs_memory , labels_memory , new_outputs , new_labels , memory_size = 10000):
+    if outputs_memory is None:
+        new_outputs_memory = new_outputs
+        new_labels_memory = new_labels
+    else:
+        new_outputs_memory = np.concatenate( (new_outputs , outputs_memory)  , axis = 0 )[:memory_size , :]
+        new_labels_memory = np.concatenate( (new_labels , labels_memory)  , axis = 0 )[:memory_size , :]
+
+    return new_outputs_memory , new_labels_memory
+
 if __name__ == "__main__":
     from tensorflow.contrib.tensorboard.plugins import projector
     import tensorflow as tf
@@ -208,7 +219,11 @@ if __name__ == "__main__":
 
         ## Generate summaries
         with tf.name_scope('Summaries'):
-            summaries = vizu.Summaries(net, len(conf_data["classes_list"]))
+            summaries = vizu.Summaries(net, conf_data)
+            outputs_test_memory = None
+            outputs_train_memory = None
+            labels_test_memory = None
+            labels_train_memory = None
 
             ## Construct filter images
             with tf.name_scope('Visualize_filters'):
@@ -271,16 +286,28 @@ if __name__ == "__main__":
                     batch_x, batch_y    = dataset.next_batch(batch_size=conf_data["batch_size"])
 
                     _, step = sess.run( [train_op, global_step],
-                        feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.5})
+                        feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.5 })
 
                     if step % conf_data["STATS_STEP"] == 0:
                         run_options         = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                         run_metadata        = tf.RunMetadata()
 
-                        _ , accuracy_train , precision_train , recall_train , f1_score_train , cost_train, summary_train = sess.run(
-                            [train_op, summaries.accuracy, summaries.precision , summaries.recall , summaries.f1_score, net.cost, merged],
-                            feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.25},
+                        _  , net_output_train , cost_train = sess.run(
+                            [train_op, net.output , net.cost],
+                            feed_dict={ net.input: batch_x, net.labels: batch_y, net.keep_prob: 0.25 },
                             options=run_options, run_metadata=run_metadata)
+
+                        outputs_train_memory , labels_train_memory = push_new_memory(outputs_train_memory , labels_train_memory , net_output_train , batch_y)
+
+                        precision_train , recall_train , f1_score_train , summary_train = sess.run(
+                            [summaries.precision , summaries.recall , summaries.f1_score, merged ],
+                            feed_dict={
+                                    net.input: batch_x,
+                                    net.labels: batch_y,
+                                    net.keep_prob: 0.25,
+                                    summaries.outputs: outputs_train_memory,
+                                    summaries.labels: labels_train_memory,
+                                    })
 
                         embed_train.evaluate(
                                     batch_x[:conf_data["nb_embeddings"],:],
@@ -288,11 +315,11 @@ if __name__ == "__main__":
                                     session=sess,
                                     dic=dataset.conf_data["classes_list"])
 
-                        summaries.evaluate(batch_x, batch_y, sess)
+                        #summaries.evaluate(batch_x, batch_y, sess)
                         writer_train.add_run_metadata(run_metadata, 'step%d' % step)
                         writer_train.add_summary(summary_train, step)
                     else:
-                        accuracy_train = cost_train = 0
+                        cost_train = 0
                         precision_train = None
 
                     ################### TESTING
@@ -302,9 +329,21 @@ if __name__ == "__main__":
                         else:
                             batch_test_x, batch_test_y  = dataset.next_batch(batch_size=conf_data["batch_size"], testing=True)
 
-                        accuracy_test , precision_test , recall_test , f1_score_test, cost_test, summary_test = sess.run(
-                            [summaries.accuracy ,summaries.precision , summaries.recall , summaries.f1_score, net.cost, merged ],
-                            feed_dict={net.input: batch_test_x,net.labels: batch_test_y, net.keep_prob: 1.0})
+                        net_output_test , cost_test = sess.run(
+                            [net.output, net.cost],
+                            feed_dict={net.input: batch_test_x,net.labels: batch_test_y, net.keep_prob: 1.0 })
+
+                        outputs_test_memory , labels_test_memory = push_new_memory(outputs_test_memory , labels_test_memory , net_output_test , batch_test_y)
+
+                        precision_test , recall_test , f1_score_test, summary_test = sess.run(
+                            [summaries.precision , summaries.recall , summaries.f1_score , merged],
+                            feed_dict={
+                                    net.input: batch_test_x,
+                                    net.labels: batch_test_y,
+                                    net.keep_prob: 1.0,
+                                    summaries.outputs: outputs_test_memory,
+                                    summaries.labels: labels_test_memory,
+                                    })
 
                         if step % conf_data["STATS_STEP"] == 0:
                             embed_test.evaluate(
@@ -315,7 +354,7 @@ if __name__ == "__main__":
                         summaries.evaluate(batch_test_x, batch_test_y, sess)
                         writer_test.add_summary(summary_test, step)
                     else:
-                        accuracy_test = cost_test = 0
+                        cost_test = 0
                         precision_test = None
 
                     if precision_test is not None and precision_train is not None:
@@ -347,4 +386,5 @@ if __name__ == "__main__":
                         #App.log(0 , "Ground truth accuracy by class train : \ntrain - acc \033[32m{0}\033[0m \ntest - acc \033[32m{1}\033[0m".format(np.array_str(class_accuracy_train, max_line_width=1000000) ,
                         #                                                                                                                             np.array_str(class_accuracy_test, max_line_width=1000000)) )
                         #App.log(0 , "Some outputs examples : \ntrain - outputs examples\n \033[32m{0}\033[0m \ntest - outputs examples\n \033[32m{1}\033[0m".format(np.array_str(outputs_examples_train, max_line_width=1000000) ,
-                        #                                                                                                                                       np.array_str(outputs_examples_test, max_line_width=1000000)))
+                        #
+                        #                                                                                                                                  np.array_str(outputs_examples_test, max_line_width=1000000)))

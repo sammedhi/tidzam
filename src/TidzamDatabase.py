@@ -311,13 +311,13 @@ class Dataset:
     def next_batch(self, batch_size=128, testing=False):
         if testing is False:
             if self.queue_training.qsize() == 0:
-                App.log(0, "Next batch size on fly is waiting (queue empty).")
+                App.log(0, "Next batch size on fly is waiting (queue empty) - train")
             while self.queue_training.empty():
                 pass
             return self.queue_training.get()
         else:
             if self.queue_testing.qsize() == 0:
-                App.log(0, "Next batch size on fly is waiting (queue empty).")
+                App.log(0, "Next batch size on fly is waiting (queue empty). - test")
             while self.queue_testing.empty():
                 pass
             return self.queue_testing.get()
@@ -337,22 +337,81 @@ class Dataset:
         return dic
 
 
-    def build_batch_onfly(self, queue, files, batch_size=64 , training_mode = False):
+    def build_batch_onfly(self, queue, files, batch_size=64 , is_training = False , file_chunk_size = 320):
         #List all the ambiant class
         ambiant_cl = [object["name"] for object in self.conf_data["object"] if object["type"] == "background"]
         type_dictionnary = dict()
         augmentation_dictionnary = dict()
         inheritence_dic = self.build_inheritence_dic(self.conf_data["classes"])
+        file_chunk_size += batch_size - (file_chunk_size % batch_size)
+        count_batch_in_one = file_chunk_size // batch_size
 
-        for cl in  self.conf_data["object"]:
+        for cl in self.conf_data["object"]:
             type_dictionnary[cl["name"]] = cl["type"]
             if "is_augmented" in cl and cl["is_augmented"]:
                 augmentation_dictionnary[cl["name"]] = cl["is_augmented"]
 
         while True:
-            while self.queue_training.full():
-                pass
+            samples = self.pick_samples(files , self.conf_data["classes"] , batch_size * count_batch_in_one)
+            for batch_id in range(count_batch_in_one):
 
+                data = []
+                labels = []
+                batch_samples = samples[batch_id * batch_size : (batch_id + 1) * batch_size]
+
+                for sample in batch_samples:
+                    cl = sample[0]
+                    files_cl = files[cl]
+                    idx = sample[1]
+
+                    #for each picked sample -> process
+                    for id in idx:
+                        sound_data , samplerate = sf.read(files_cl[id])
+                        sound_data = sound_data if len(sound_data.shape) <= 1 else convert_to_monochannel(sound_data)
+
+                        if is_training and type_dictionnary[cl] == "content" and cl in augmentation_dictionnary:
+                            ambiant_file = random.choice(files[random.choice(ambiant_cl)])
+                            ambiant_sound , samplerate = sf.read(ambiant_file)
+                            ambiant_sound = ambiant_sound if len(ambiant_sound.shape) <= 1 else convert_to_monochannel(ambiant_sound)
+                            try:
+                                sound_data = blend_sound_to_background(sound_data , ambiant_sound)
+                            except:
+                                App.Log(0 , "One of these 2 files are corrupted (or probably both) : " , files_cl[id] , " , " , ambiant_file)
+
+
+                        try:
+                            raw, time, freq, size   = play_spectrogram_from_stream(files_cl[id],cutoff=self.cutoff)
+                            raw                     = np.nan_to_num(raw)
+                            raw                     = np.reshape(raw, [1, raw.shape[0]*raw.shape[1]])
+                            label                   = self.build_output_vector(cl ,inheritence_dic)
+
+                            try:
+                                data = np.concatenate((data, raw), axis=0)
+                                labels = np.concatenate((labels, label), axis=0)
+                            except:
+                                data   = raw
+                                labels = label
+
+                        except Exception as e :
+                            App.log(0, "Bad file" + str(e))
+                            traceback.print_exc()
+
+                    #Shuffle the final batch
+                    idx = np.arange(data.shape[0])
+                    np.random.shuffle(idx)
+                    data   = data[idx,:]
+                    labels = labels[idx,:]
+
+                    data   = data[:batch_size,:]
+                    labels = labels[:batch_size,:]
+
+                    while self.queue_training.full():
+                        pass
+
+                    queue.put([data, labels])
+
+
+            '''
             count = math.ceil(batch_size / len(self.conf_data["classes_list"]))
             data = []
             labels = []
@@ -369,46 +428,31 @@ class Dataset:
                 idx = np.arange(len(files_cl))
                 np.random.shuffle(idx)
                 idx = idx[:count]
-
-                #for each picked sample -> process
-                for id in idx:
-                    sound_data , samplerate = sf.read(files_cl[id])
-                    sound_data = sound_data if len(sound_data.shape) <= 1 else convert_to_monochannel(sound_data)
-
-                    if training_mode and type_dictionnary[cl] == "content" and cl in augmentation_dictionnary:
-                        ambiant_file = random.choice(files[random.choice(ambiant_cl)])
-                        ambiant_sound , samplerate = sf.read(ambiant_file)
-                        ambiant_sound = ambiant_sound if len(ambiant_sound.shape) <= 1 else convert_to_monochannel(ambiant_sound)
-                        try:
-                            sound_data = blend_sound_to_background(sound_data , ambiant_sound)
-                        except:
-                            App.Log(0 , "One of these 2 files are corrupted (or probably both) : " , files_cl[id] , " , " , ambiant_file)
+            '''
 
 
-                    try:
-                        raw, time, freq, size   = play_spectrogram_from_stream(files_cl[id],cutoff=self.cutoff)
-                        raw                     = np.nan_to_num(raw)
-                        raw                     = np.reshape(raw, [1, raw.shape[0]*raw.shape[1]])
-                        label                   = self.build_output_vector(cl ,inheritence_dic)
+    def pick_samples(self , files , cl_list , size , parent_cl=None):
+        output_files = []
+        cl_list = cl_list + ([] if parent_cl is None else [parent_cl])
+        count = math.ceil(size / len(cl_list) )
 
-                        try:
-                            data = np.concatenate((data, raw), axis=0)
-                            labels = np.concatenate((labels, label), axis=0)
-                        except:
-                            data   = raw
-                            labels = label
+        for i , cl in enumerate(cl_list):
+            if isinstance(cl , str):
+                try:
+                    files_cl = files[cl]
+                except:
+                    App.log(0 , "Error : The class {0} does not exist".format(cl))
+            else:
+                if cl["name"] in files:
+                    output_files += self.pick_samples(files , cl["classes"] , count , cl["name"])
+                else:
+                    output_files += self.pick_samples(files , cl["classes"] , count )
+                continue
 
-                    except Exception as e :
-                        App.log(0, "Bad file" + str(e))
-                        traceback.print_exc()
-
-            #Shuffle the final batch
-            idx = np.arange(data.shape[0])
+            idx = np.arange(len(files_cl))
             np.random.shuffle(idx)
-            data   = data[idx,:]
-            labels = labels[idx,:]
+            idx = idx[:count]
 
-            data   = data[:batch_size,:]
-            labels = labels[:batch_size,:]
+            output_files.append([cl , idx])
 
-            queue.put([data, labels])
+        return output_files

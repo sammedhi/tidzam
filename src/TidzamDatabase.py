@@ -343,7 +343,10 @@ class Dataset:
         type_dictionnary = dict()
         augmentation_dictionnary = dict()
         inheritence_dic = self.build_inheritence_dic(self.conf_data["classes"])
-        file_chunk_size += batch_size - (file_chunk_size % batch_size)
+        corrupted_files = []
+
+        if file_chunk_size % batch_size != 0:
+            file_chunk_size += batch_size - (file_chunk_size % batch_size)
 
         for cl in self.conf_data["object"]:
             type_dictionnary[cl["name"]] = cl["type"]
@@ -351,6 +354,9 @@ class Dataset:
                 augmentation_dictionnary[cl["name"]] = cl["is_augmented"]
 
         while True:
+            if len(corrupted_files) > 0:
+                App.log(0 , "Care you have some corrupted_file : " + str(corrupted_files))
+
             samples = self.pick_samples(files , self.conf_data["classes"] , file_chunk_size)
             number_batch = len(samples) // batch_size
             for batch_id in range(number_batch):
@@ -374,7 +380,7 @@ class Dataset:
                         try:
                             sound_data = blend_sound_to_background(sound_data , ambiant_sound)
                         except:
-                            App.Log(0 , "One of these 2 files are corrupted (or probably both) : " , files_cl[id] , " , " , ambiant_file)
+                            App.log(0 , "One of these 2 files are corrupted (or probably both) : " + files_cl[id] + " , " + ambiant_file)
 
 
                     try:
@@ -383,6 +389,11 @@ class Dataset:
                         raw                     = np.reshape(raw, [1, raw.shape[0]*raw.shape[1]])
                         label                   = self.build_output_vector(cl ,inheritence_dic)
 
+                        if size[0] != self.size[0] or size[1] != self.size[1]:
+                            if files_cl[id] not in corrupted_files:
+                                corrupted_files.append(files_cl[id])
+                            continue
+
                         try:
                             data = np.concatenate((data, raw), axis=0)
                             labels = np.concatenate((labels, label), axis=0)
@@ -390,7 +401,10 @@ class Dataset:
                             data   = raw
                             labels = label
 
+
                     except Exception as e :
+                        if files_cl[id] not in corrupted_files:
+                            corrupted_files.append(files_cl[id])
                         App.log(0, "Bad file" + str(e))
                         traceback.print_exc()
 

@@ -357,11 +357,19 @@ class Dataset:
             if len(corrupted_files) > 0:
                 App.log(0 , "Care you have some corrupted_file : " + str(corrupted_files))
 
+            #Pick a big batch
             samples = self.pick_samples(files , self.conf_data["classes"] , file_chunk_size)
+            #Shuffle the batch
+            random.shuffle(samples)
+
+            #Split the big batch into smaller ones and loop over them
             number_batch = len(samples) // batch_size
             for batch_id in range(number_batch):
                 data = []
                 labels = []
+
+
+
                 batch_samples = samples[batch_id * batch_size : (batch_id + 1) * batch_size]
 
                 for sample in batch_samples:
@@ -370,15 +378,19 @@ class Dataset:
                     id = sample[1]
                     #for each picked sample -> process
                     #for id in idx:
+                    label                   = self.build_output_vector(cl ,inheritence_dic)
                     sound_data , samplerate = sf.read(files_cl[id])
                     sound_data = sound_data if len(sound_data.shape) <= 1 else convert_to_monochannel(sound_data)
 
                     if is_training and type_dictionnary[cl] == "content" and cl in augmentation_dictionnary:
-                        ambiant_file = random.choice(files[random.choice(ambiant_cl)])
+                        picked_ambiant_cl = random.choice(ambiant_cl)
+                        ambiant_file = random.choice(files[picked_ambiant_cl])
                         ambiant_sound , samplerate = sf.read(ambiant_file)
                         ambiant_sound = ambiant_sound if len(ambiant_sound.shape) <= 1 else convert_to_monochannel(ambiant_sound)
                         try:
                             sound_data = blend_sound_to_background(sound_data , ambiant_sound)
+                            if picked_ambiant_cl in self.conf_data["classes_list"] and self.conf_data["is_multiclass"]:
+                                label = np.clip( label + self.build_output_vector(picked_ambiant_cl , inheritence_dic) , 0 , 1)
                         except:
                             App.log(0 , "One of these 2 files are corrupted (or probably both) : " + files_cl[id] + " , " + ambiant_file)
 
@@ -387,7 +399,7 @@ class Dataset:
                         raw, time, freq, size   = play_spectrogram_from_stream(files_cl[id],cutoff=self.cutoff)
                         raw                     = np.nan_to_num(raw)
                         raw                     = np.reshape(raw, [1, raw.shape[0]*raw.shape[1]])
-                        label                   = self.build_output_vector(cl ,inheritence_dic)
+
 
                         if size[0] != self.size[0] or size[1] != self.size[1]:
                             if files_cl[id] not in corrupted_files:
@@ -401,18 +413,11 @@ class Dataset:
                             data   = raw
                             labels = label
 
-
                     except Exception as e :
                         if files_cl[id] not in corrupted_files:
                             corrupted_files.append(files_cl[id])
                         App.log(0, "Bad file" + str(e))
                         traceback.print_exc()
-
-                #Shuffle the final batch
-                idx = np.arange(data.shape[0])
-                np.random.shuffle(idx)
-                data   = data[idx,:]
-                labels = labels[idx,:]
 
                 data   = data[:batch_size,:]
                 labels = labels[:batch_size,:]

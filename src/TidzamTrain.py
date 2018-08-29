@@ -133,11 +133,14 @@ if __name__ == "__main__":
 
     parser.add_option("--conf-file", action="store", type="string", dest="conf_file" ,
         default="" , help="json file holding the data necessary about class access path and type")
+
+    parser.add_option("--is-multiclass", action="store_true", dest="is_multiclass" ,
+        help="Set the multiclass training")
     ###
 
     default_values_dic = {"dataset_train" : "" ,"out" : "/tmp/tflearn_logs" , "dnn" : "default" , "training_iters" : 20000,"testing_iterations" : 10,
                             "batch_size" : 64, "learning_rate" : 0.001, "STATS_STEP" : 20, "nb_embeddings" : 50, "task_index" : 0, "workers" : "localhost:2222","ps": "",
-                            "job_type" : "worker", "cutoff_down":20, "cutoff_up":170 }
+                            "job_type" : "worker", "cutoff_down":20, "cutoff_up":170 , "is_multiclass" : False}
 
     (opts, args) = parser.parse_args()
     opts = vars(opts)
@@ -150,7 +153,6 @@ if __name__ == "__main__":
         exit()
 
     overwrite_conf_with_opts(conf_data , opts , default_values_dic)
-
     ###################################
     # Cluster configuration
     ###################################
